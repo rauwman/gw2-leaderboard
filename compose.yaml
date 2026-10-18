@@ -1,0 +1,13 @@
+services:
+  gw2-leaderboard:
+    image: ghcr.io/rauwman/gw2-leaderboard:latest
+    # build: .   # or build it yourself instead of pulling the image
+    container_name: gw2-leaderboard
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"   # reverse proxy on the same host; use your Docker network instead if it runs elsewhere
+    volumes:
+      - ./data:/data
+    environment:
+      GW2_INVITE_CODE: "${GW2_INVITE_CODE:?set GW2_INVITE_CODE in .env}"   # shared secret for sign-up from the launcher
+      GW2_PUBLIC_BOARD: "1"   # "0" hides the read-only web page
