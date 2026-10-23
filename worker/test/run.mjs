@@ -47,9 +47,24 @@ async function startServer(port, vars = {}) {
 before(async () => {
   assert.ok(existsSync(wrangler), "run `npm install` first");
 });
-after(() => {
-  for (const child of servers) child.kill();
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+// On Windows, killing wrangler leaves its workerd child running and holding the database files, so the whole process
+// tree is stopped. Cleaning up must never fail a test run: a leftover temporary folder is only reported.
+function stop(child) {
+  if (child.exitCode !== null) return;
+  if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"]);
+  else child.kill();
+}
+
+after(async () => {
+  for (const child of servers) stop(child);
+  await sleep(1500);
+  for (const dir of dirs) {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+    } catch (error) {
+      console.warn(`Could not remove ${dir} (${error.code}); it can be deleted by hand.`);
+    }
+  }
 });
 
 let ipCounter = 0;
@@ -457,16 +472,19 @@ describe("closed registration", async () => {
 });
 
 describe("import from the old server", async () => {
-  const python = spawnSync("python3", ["--version"]);
+  // `python3` on Linux and macOS, `python` or the `py` launcher on Windows.
+  const python = ["python3", "python", "py"]
+    .map((command) => ({ command, run: spawnSync(command, ["--version"], { encoding: "utf8" }) }))
+    .find(({ run }) => run.status === 0 && /Python 3/.test(`${run.stdout}${run.stderr}`));
   const { base, dir } = await startServer(8793);
   const { call, boards } = client(base);
 
-  test("keeps names, scores, ids and account keys", { skip: python.status !== 0 && "python3 not found" }, async () => {
+  test("keeps names, scores, ids and account keys", { skip: !python && "Python 3 not found" }, async () => {
     const work = mkdtempSync(join(tmpdir(), "gw2lb-import-"));
     dirs.push(work);
     const tokens = { Old1: "old-key-one-aaaaaaaaaaaaaaaaaaaaaaaa", Old2: "old-key-two-bbbbbbbbbbbbbbbbbbbbbbbb" };
     const make = spawnSync(
-      "python3",
+      python.command,
       [
         "-c",
         `
@@ -493,7 +511,7 @@ db.commit()
       { encoding: "utf8" },
     );
     assert.equal(make.status, 0, make.stderr);
-    const run = spawnSync("python3", [join(root, "tools", "sqlite-to-d1.py"), join(work, "old.db"), "-o", join(work, "import.sql"), "--skip", "TestFreund", "--befriend-all"], {
+    const run = spawnSync(python.command, [join(root, "tools", "sqlite-to-d1.py"), join(work, "old.db"), "-o", join(work, "import.sql"), "--skip", "TestFreund", "--befriend-all"], {
       encoding: "utf8",
     });
     assert.equal(run.status, 0, run.stderr);
