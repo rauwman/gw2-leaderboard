@@ -1,0 +1,23 @@
+name = "gw2-leaderboard"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gw2-leaderboard"
+# Printed by `npx wrangler d1 create gw2-leaderboard` (see README.md). It is not a secret.
+database_id = "REPLACE_WITH_DATABASE_ID"
+
+# Your own domain (Workers > Custom Domains). The hostname must not have another DNS record: delete the old one first.
+# routes = [{ pattern = "gw2.example.org", custom_domain = true }]
+
+# Daily housekeeping: old rate-limit rows and stale friend requests.
+[triggers]
+crons = ["17 3 * * *"]
+
+# Optional settings (defaults in src/config.js):
+# [vars]
+# REGISTRATION = "open"   # "closed" stops new sign-ups
+# PUBLIC_BOARD = "1"      # "0" turns the read-only web page at / off
+#
+# Secret, set with `npx wrangler secret put ADMIN_TOKEN`: enables the /admin API. Without it the API answers 404.

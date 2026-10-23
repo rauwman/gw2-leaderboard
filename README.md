@@ -1,5 +1,7 @@
 # GW2 Leaderboard Server
 
+> **Moving to Cloudflare.** The global version with friend codes lives in [`worker/`](worker/) (Cloudflare Worker + D1). This FastAPI server is the first, private version and stays here until the move is done.
+
 A small private leaderboard server for the [Geometry Wars: Retro Evolved 2 PC port fork](https://github.com/rauwman/geometry-wars-retro-evolved-2-recompiled) (the friends leaderboard). FastAPI + SQLite in one Docker container. Friends sign up with an invite code from the game's launcher, their best scores are uploaded, and everyone appears on the game's own Overall / My score / Friends screens.
 
 > **Vibe-coded.** This server was written with heavy AI assistance (Claude) and directed and tested by hand by its maintainer. It runs fine for a small group of friends, but it has had no independent security review. Use it for fun with people you know, not for anything that matters.

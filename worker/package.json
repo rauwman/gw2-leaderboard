@@ -1,0 +1,13 @@
+{
+  "name": "gw2-leaderboard-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "node test/run.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.152.0"
+  }
+}
