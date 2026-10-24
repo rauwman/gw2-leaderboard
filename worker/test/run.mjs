@@ -124,7 +124,7 @@ describe("worker", async () => {
       const me = await call("GET", "/v1/me", { token: r.data.token });
       assert.equal(me.status, 200);
       assert.equal(me.data.xuid, r.data.xuid);
-      assert.match(me.data.friend_code, /^[A-Z2-9]{5}-[A-Z2-9]{5}$/);
+      assert.equal(me.data.friend_code, undefined, "there are no friend codes: friends are asked by name");
       assert.ok(!JSON.stringify(me.data).includes(r.data.token), "the key is never echoed");
     });
 
@@ -174,16 +174,6 @@ describe("worker", async () => {
       const fresh = `${a.name}x`.slice(0, 15);
       assert.equal((await call("PUT", "/v1/me", { token: a.token, body: { name: fresh } })).status, 200);
       assert.equal((await call("GET", "/v1/me", { token: a.token })).data.name, fresh);
-    });
-
-    test("a new friend code replaces the old one", async () => {
-      const a = await signUp("Code");
-      const before = (await call("GET", "/v1/me", { token: a.token })).data.friend_code;
-      const after = (await call("POST", "/v1/me/friend-code", { token: a.token })).data.friend_code;
-      assert.notEqual(before, after);
-      const b = await signUp("Code");
-      assert.equal((await call("POST", "/v1/friends/request", { token: b.token, body: { code: before } })).status, 404);
-      assert.equal((await call("POST", "/v1/friends/request", { token: b.token, body: { code: after.toLowerCase() } })).status, 201);
     });
   });
 
@@ -289,8 +279,7 @@ describe("worker", async () => {
   });
 
   describe("friends", () => {
-    const codeOf = async (p) => (await call("GET", "/v1/me", { token: p.token })).data.friend_code;
-    const overview = async (p) => (await call("GET", "/v1/friends", { token: p.token })).data;
+        const overview = async (p) => (await call("GET", "/v1/friends", { token: p.token })).data;
     const names = (list) => list.map((x) => x.name).sort();
 
     test("request, accept, and the Friends board", async () => {
@@ -301,7 +290,7 @@ describe("worker", async () => {
       await upload(b, [{ view: 2, score: 500 }]);
       await upload(c, [{ view: 2, score: 900 }]);
 
-      const sent = await call("POST", "/v1/friends/request", { token: a.token, body: { code: await codeOf(b) } });
+      const sent = await call("POST", "/v1/friends/request", { token: a.token, body: { to: b.name } });
       assert.equal(sent.status, 201);
       assert.deepEqual(sent.data, { status: "sent", xuid: b.xuid, name: b.name });
       assert.deepEqual(names((await overview(a)).outgoing), [b.name]);
@@ -323,14 +312,28 @@ describe("worker", async () => {
       assert.ok(!forA.data.views["2"].friends.some((x) => x.name === c.name), "strangers are not on the Friends board");
       assert.equal(forA.data.views["2"].rows[0].name, c.name, "the global board still shows everyone");
 
-      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { code: await codeOf(b) } })).data.status, "friends");
+      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { to: b.name } })).data.status, "friends");
+    });
+
+    test("a request by name: any case, spaces around it", async () => {
+      const a = await signUp("Fn");
+      const b = await signUp("Fn");
+      const sent = await call("POST", "/v1/friends/request", { token: a.token, body: { to: `  ${b.name.toLowerCase()} ` } });
+      assert.equal(sent.status, 201);
+      assert.deepEqual([sent.data.status, sent.data.xuid, sent.data.name], ["sent", b.xuid, b.name]);
+      assert.deepEqual(names((await overview(b)).incoming), [a.name]);
+      assert.deepEqual((await overview(a)).friends, [], "still nobody's friend until the other side accepts");
+      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { to: b.name } })).status, 200, "asking twice adds nothing");
+      const back = await call("POST", "/v1/friends/request", { token: b.token, body: { to: a.name } });
+      assert.equal(back.data.status, "friends");
+      assert.deepEqual(names((await overview(a)).friends), [b.name]);
     });
 
     test("a request from both sides settles by itself", async () => {
       const a = await signUp("Fd");
       const b = await signUp("Fd");
-      await call("POST", "/v1/friends/request", { token: a.token, body: { code: await codeOf(b) } });
-      const r = await call("POST", "/v1/friends/request", { token: b.token, body: { code: await codeOf(a) } });
+      await call("POST", "/v1/friends/request", { token: a.token, body: { to: b.name } });
+      const r = await call("POST", "/v1/friends/request", { token: b.token, body: { to: a.name } });
       assert.equal(r.data.status, "friends");
       assert.deepEqual(names((await overview(a)).friends), [b.name]);
     });
@@ -338,10 +341,10 @@ describe("worker", async () => {
     test("declining is silent for the sender and blocks repeats", async () => {
       const a = await signUp("Fe");
       const b = await signUp("Fe");
-      await call("POST", "/v1/friends/request", { token: a.token, body: { code: await codeOf(b) } });
+      await call("POST", "/v1/friends/request", { token: a.token, body: { to: b.name } });
       assert.equal((await call("POST", "/v1/friends/decline", { token: b.token, body: { xuid: a.xuid } })).status, 200);
       assert.deepEqual((await overview(b)).incoming, []);
-      const again = await call("POST", "/v1/friends/request", { token: a.token, body: { code: await codeOf(b) } });
+      const again = await call("POST", "/v1/friends/request", { token: a.token, body: { to: b.name } });
       assert.equal(again.data.status, "sent", "the sender cannot tell");
       assert.deepEqual((await overview(b)).incoming, []);
       assert.deepEqual((await overview(a)).outgoing, [], "a declined request is no longer shown as open");
@@ -350,15 +353,19 @@ describe("worker", async () => {
     test("cancel, remove, and mistakes", async () => {
       const a = await signUp("Ff");
       const b = await signUp("Ff");
-      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { code: await codeOf(a) } })).status, 422);
-      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { code: "ZZZZZ-ZZZZZ" } })).status, 404);
-      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { code: "abc" } })).status, 422);
-      await call("POST", "/v1/friends/request", { token: a.token, body: { code: await codeOf(b) } });
+      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { to: a.name } })).status, 422);
+      // By name: any case, spaces around it are fine; unknown names and the own name are refused.
+      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { to: "NoSuchPlayerHere" } })).status, 404);
+      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { to: a.name.toUpperCase() } })).status, 422);
+      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { to: "   " } })).status, 422);
+      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: {} })).status, 422);
+      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { to: "x".repeat(41) } })).status, 422);
+      await call("POST", "/v1/friends/request", { token: a.token, body: { to: b.name } });
       assert.equal((await call("POST", "/v1/friends/cancel", { token: a.token, body: { xuid: b.xuid } })).status, 200);
       assert.deepEqual((await overview(b)).incoming, []);
       assert.equal((await call("POST", "/v1/friends/accept", { token: b.token, body: { xuid: a.xuid } })).status, 404);
 
-      await call("POST", "/v1/friends/request", { token: a.token, body: { code: await codeOf(b) } });
+      await call("POST", "/v1/friends/request", { token: a.token, body: { to: b.name } });
       await call("POST", "/v1/friends/accept", { token: b.token, body: { xuid: a.xuid } });
       assert.equal((await call("POST", "/v1/friends/remove", { token: a.token, body: { xuid: b.xuid } })).status, 200);
       assert.deepEqual((await overview(b)).friends, []);
@@ -370,7 +377,7 @@ describe("worker", async () => {
     test("friend requests are limited per player", async () => {
       const a = await signUp("Fg");
       let last;
-      for (let i = 0; i < 21; i++) last = await call("POST", "/v1/friends/request", { token: a.token, body: { code: "ZZZZZ-ZZZZZ" } });
+      for (let i = 0; i < 21; i++) last = await call("POST", "/v1/friends/request", { token: a.token, body: { to: "NoSuchPlayerHere" } });
       assert.equal(last.status, 429);
     });
   });
@@ -404,8 +411,7 @@ describe("worker", async () => {
       const a = await signUp("Mi");
       const b = await signUp("Mi");
       await admin("POST", "/admin/hide", { player: a.name });
-      const code = (await call("GET", "/v1/me", { token: b.token })).data.friend_code;
-      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { code } })).data.status, "sent");
+      assert.equal((await call("POST", "/v1/friends/request", { token: a.token, body: { to: b.name } })).data.status, "sent");
       assert.deepEqual((await call("GET", "/v1/friends", { token: b.token })).data.incoming, []);
     });
 
@@ -435,8 +441,7 @@ describe("worker", async () => {
       const a = await signUp("Del");
       const b = await signUp("Del");
       await upload(a, [{ view: 5, score: 99 }]);
-      const code = (await call("GET", "/v1/me", { token: b.token })).data.friend_code;
-      await call("POST", "/v1/friends/request", { token: a.token, body: { code } });
+      await call("POST", "/v1/friends/request", { token: a.token, body: { to: b.name } });
       await call("POST", "/v1/friends/accept", { token: b.token, body: { xuid: a.xuid } });
 
       assert.equal((await call("POST", "/v1/me/delete", { token: a.token, body: {} })).status, 400);
@@ -525,7 +530,6 @@ db.commit()
     const me = await call("GET", "/v1/me", { token: tokens.Old1 });
     assert.equal(me.status, 200, "the old account key still works");
     assert.deepEqual([me.data.xuid, me.data.name], ["E000AAAAAAAAAAAA", "Old1"]);
-    assert.match(me.data.friend_code, /^[A-Z2-9]{5}-[A-Z2-9]{5}$/, "a friend code appears on first use");
     assert.equal((await call("GET", "/v1/me", { token: "old-key-three-cccccccccccccccccc" })).status, 401);
 
     const result = await boards({ token: tokens.Old1 });

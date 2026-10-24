@@ -3,14 +3,13 @@
 //
 //   POST /v1/register                 {name}                      -> {xuid, name, token}   (token shown once)
 //   GET  /v1/name-available?name=
-//   GET  /v1/me                                                   -> {xuid, name, friend_code}
+//   GET  /v1/me                                                   -> {xuid, name}
 //   PUT  /v1/me                       {name}
-//   POST /v1/me/friend-code                                       -> {friend_code}   (replaces the old one)
 //   POST /v1/me/delete                {confirm: "DELETE"}
 //   POST /v1/scores                   {scores: [{view, score}]}
 //   GET  /v1/boards?limit=            top rows, own place and friends per mode      (ETag / 304)
-//   GET  /v1/friends                                              -> friend code, friends, open requests
-//   POST /v1/friends/request          {code}
+//   GET  /v1/friends                                              -> friends, open requests
+//   POST /v1/friends/request          {to: player name}
 //   POST /v1/friends/accept | decline | cancel | remove   {xuid}
 //
 // Everything except register and name-available needs `Authorization: Bearer <account key>`. /admin/* is documented
@@ -30,7 +29,6 @@ const routes = {
   "POST /v1/register": accounts.register,
   "GET /v1/me": accounts.me,
   "PUT /v1/me": accounts.rename,
-  "POST /v1/me/friend-code": accounts.newCode,
   "POST /v1/me/delete": accounts.deleteMe,
   "POST /v1/scores": scores.postScores,
   "GET /v1/boards": (request, env, url) => scores.boards(request, env, url),

@@ -1,11 +1,9 @@
-// Friends: a request by friend code, accepted by the other player. Only then do both see each other on the Friends board.
+// Friends: a request by player name, accepted by the other player. Only then do both see each other on the Friends board.
 
 import { MAX_FRIENDS, MAX_OPEN_INCOMING, MAX_OPEN_OUTGOING } from "./config.js";
 import {
-  HttpError, authenticate, bumpRevision, formatFriendCode, json, normalizeFriendCode, now, readJson, tooMany,
-  withinLimit,
+  HttpError, authenticate, bumpRevision, json, now, readJson, tooMany, withinLimit,
 } from "./common.js";
-import { ensureFriendCode } from "./accounts.js";
 
 const pair = (x, y) => (x < y ? [x, y] : [y, x]);
 
@@ -21,10 +19,9 @@ async function playerByXuid(env, xuid) {
   return row;
 }
 
-// The friend code, the friends, and the requests waiting for an answer in either direction.
+// The friends, and the requests waiting for an answer in either direction.
 export async function overview(request, env) {
   const player = await authenticate(request, env);
-  const code = await ensureFriendCode(env, player);
   const [friends, incoming, outgoing] = await env.DB.batch([
     env.DB.prepare(
       "SELECT p.xuid AS xuid, p.name AS name FROM players p WHERE p.hidden = 0 AND p.id IN " +
@@ -41,24 +38,24 @@ export async function overview(request, env) {
     ).bind(player.id),
   ]);
   return json({
-    friend_code: formatFriendCode(code),
     friends: friends.results,
     incoming: incoming.results,
     outgoing: outgoing.results,
   });
 }
 
-// Asks the owner of a friend code to be friends. Answers are the same whether the other side can see the request or
+// Asks the player with that name to be friends. Answers are the same whether the other side can see the request or
 // not, so a player cannot find out that someone ignored or blocked them.
 export async function sendRequest(request, env) {
   const me = await authenticate(request, env);
-  const code = normalizeFriendCode((await readJson(request)).code);
-  if (code.length < 10) throw new HttpError(422, "That is not a friend code");
+  const body = await readJson(request);
+  const name = typeof body.to === "string" ? body.to.trim() : "";
+  if (!name || name.length > 40) throw new HttpError(422, "Enter the name of a player");
   if (!(await withinLimit(env, "friend_request", String(me.id)))) throw tooMany("friend_request");
 
-  const target = await env.DB.prepare("SELECT * FROM players WHERE friend_code = ?").bind(code).first();
-  if (!target) throw new HttpError(404, "No player has that friend code");
-  if (target.id === me.id) throw new HttpError(422, "That is your own friend code");
+  const target = await env.DB.prepare("SELECT * FROM players WHERE name_lc = ?").bind(name.toLowerCase()).first();
+  if (!target) throw new HttpError(404, "No player has that name");
+  if (target.id === me.id) throw new HttpError(422, "That is you");
 
   const [a, b] = pair(me.id, target.id);
   const friends = await env.DB.prepare("SELECT 1 AS x FROM friendships WHERE a_id = ? AND b_id = ?").bind(a, b).first();

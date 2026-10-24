@@ -5,7 +5,7 @@
     npx wrangler d1 execute gw2-leaderboard --remote --file import.sql
 
 Players keep their ids, xuids and account keys (the stored hashes are the same SHA-256), so nobody has to sign up again
-and every key a friend holds still works. Their scores come along. Friend codes are created on first use.
+and every key a friend holds still works. Their scores come along.
 
 --skip NAME       leave a player out (repeatable), e.g. test accounts
 --befriend-all    make all imported players friends of each other, so a group that saw each other on the old

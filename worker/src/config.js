@@ -31,10 +31,6 @@ export const DECLINED_TTL_SECONDS = 180 * 86400;
 export const LIMITS = {
   register_ip: [5, 3600],
   register_all: [300, 3600], // a circuit breaker for sign-ups spread over many addresses
-  friend_request: [20, 3600], // per player; also makes guessing friend codes pointless
+  friend_request: [20, 3600], // per player: names are public, so this is what limits request spam
   rename: [10, 3600],
 };
-
-// Friend codes: 10 characters without the easily confused 0, 1, I and O (32^10, about 2^50 combinations).
-export const FRIEND_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-export const FRIEND_CODE_LENGTH = 10;

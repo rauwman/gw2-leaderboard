@@ -9,7 +9,8 @@ async function authorize(request, env) {
   const header = request.headers.get("authorization") ?? "";
   const given = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
   // Compare hashes: equal length, and no early exit on the first differing character.
-  const [a, b] = await Promise.all([sha256Hex(given), sha256Hex(env.ADMIN_TOKEN)]);
+  // The secret is trimmed: a value piped or pasted into `wrangler secret put` may carry a trailing line break.
+  const [a, b] = await Promise.all([sha256Hex(given), sha256Hex(String(env.ADMIN_TOKEN).trim())]);
   if (!crypto.subtle.timingSafeEqual(new TextEncoder().encode(a), new TextEncoder().encode(b))) {
     throw new HttpError(401, "Unauthorized", { "www-authenticate": "Bearer" });
   }

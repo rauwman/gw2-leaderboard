@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS players (
     name        TEXT NOT NULL,
     name_lc     TEXT NOT NULL UNIQUE,
     token_hash  TEXT NOT NULL UNIQUE,        -- SHA-256 (hex) of the private account key
-    friend_code TEXT UNIQUE,                 -- created on first use; NULL until then
     hidden      INTEGER NOT NULL DEFAULT 0,  -- 1: left out of every board but their own (moderation)
     created_at  INTEGER NOT NULL,
     last_submit INTEGER NOT NULL DEFAULT 0

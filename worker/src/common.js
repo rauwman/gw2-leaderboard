@@ -1,4 +1,4 @@
-import { LIMITS, MAX_BODY_BYTES, NAME_RE, NAME_RULE, FRIEND_CODE_ALPHABET, FRIEND_CODE_LENGTH } from "./config.js";
+import { LIMITS, MAX_BODY_BYTES, NAME_RE, NAME_RULE } from "./config.js";
 
 // Errors carry the same {"detail": "..."} body the old FastAPI server sent, which the game's launcher reads.
 export class HttpError extends Error {
@@ -54,16 +54,6 @@ export function newToken() {
 
 // Retail XUIDs start with 0009 or E000; E000 plus 12 random hex digits looks the same to the game.
 export const newXuid = () => "E000" + randomHex(6).toUpperCase();
-
-export function newFriendCode() {
-  const bytes = crypto.getRandomValues(new Uint8Array(FRIEND_CODE_LENGTH));
-  return [...bytes].map((b) => FRIEND_CODE_ALPHABET[b % FRIEND_CODE_ALPHABET.length]).join("");
-}
-
-export const formatFriendCode = (code) => (code ? `${code.slice(0, 5)}-${code.slice(5)}` : null);
-
-// What a player typed or pasted: any case, with or without the dash or spaces.
-export const normalizeFriendCode = (text) => String(text ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 export function checkName(name) {
   if (typeof name !== "string" || !NAME_RE.test(name) || name !== name.trimEnd()) throw new HttpError(422, NAME_RULE);

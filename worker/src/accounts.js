@@ -1,8 +1,8 @@
-// Players: sign-up, name checks, rename, friend code, deleting an account.
+// Players: sign-up, name checks, rename, deleting an account.
 
 import {
-  HttpError, authenticate, bumpRevision, checkName, clientKey, formatFriendCode, isUnique, json, newFriendCode,
-  newToken, newXuid, now, readJson, sha256Hex, tooMany, withinLimit,
+  HttpError, authenticate, bumpRevision, checkName, clientKey, isUnique, json, newToken,
+  newXuid, now, readJson, sha256Hex, tooMany, withinLimit,
 } from "./common.js";
 
 export async function nameAvailable(request, env, url) {
@@ -31,43 +31,23 @@ export async function register(request, env) {
     try {
       await env.DB.batch([
         env.DB.prepare(
-          "INSERT INTO players (xuid, name, name_lc, token_hash, friend_code, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        ).bind(xuid, name, name.toLowerCase(), await sha256Hex(token), newFriendCode(), now()),
+          "INSERT INTO players (xuid, name, name_lc, token_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+        ).bind(xuid, name, name.toLowerCase(), await sha256Hex(token), now()),
         bumpRevision(env),
       ]);
       return json({ xuid, name, token }, 201);
     } catch (error) {
       if (isUnique(error, "players.name_lc")) throw new HttpError(409, "That name is already taken");
-      // A clash of the random xuid or friend code is practically impossible, but costs nothing to retry.
-      if (!isUnique(error, "players.xuid") && !isUnique(error, "players.friend_code")) throw error;
+      // A clash of the random xuid is practically impossible, but costs nothing to retry.
+      if (!isUnique(error, "players.xuid")) throw error;
     }
   }
   throw new HttpError(500, "Could not create the account, try again");
 }
 
-// Accounts imported from the old server have no friend code yet: they get one the first time it is needed.
-export async function ensureFriendCode(env, player) {
-  if (player.friend_code) return player.friend_code;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const code = newFriendCode();
-    try {
-      await env.DB.prepare("UPDATE players SET friend_code = ? WHERE id = ? AND friend_code IS NULL")
-        .bind(code, player.id)
-        .run();
-    } catch (error) {
-      if (isUnique(error, "players.friend_code")) continue;
-      throw error;
-    }
-    const row = await env.DB.prepare("SELECT friend_code FROM players WHERE id = ?").bind(player.id).first();
-    return row.friend_code;
-  }
-  throw new HttpError(500, "Could not create a friend code, try again");
-}
-
 export async function me(request, env) {
   const player = await authenticate(request, env);
-  const code = await ensureFriendCode(env, player);
-  return json({ xuid: player.xuid, name: player.name, friend_code: formatFriendCode(code) });
+  return json({ xuid: player.xuid, name: player.name });
 }
 
 export async function rename(request, env) {
@@ -84,21 +64,6 @@ export async function rename(request, env) {
     throw error;
   }
   return json({ xuid: player.xuid, name });
-}
-
-// A new friend code; the old one stops working. Friends and open requests stay.
-export async function newCode(request, env) {
-  const player = await authenticate(request, env);
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const code = newFriendCode();
-    try {
-      await env.DB.prepare("UPDATE players SET friend_code = ? WHERE id = ?").bind(code, player.id).run();
-      return json({ friend_code: formatFriendCode(code) });
-    } catch (error) {
-      if (!isUnique(error, "players.friend_code")) throw error;
-    }
-  }
-  throw new HttpError(500, "Could not create a friend code, try again");
 }
 
 // Removes the player, their scores, friendships and requests. Needs {"confirm": "DELETE"} so it cannot happen by accident.

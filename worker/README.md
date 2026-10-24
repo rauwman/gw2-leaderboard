@@ -12,9 +12,8 @@ server in the parent folder and speaks the same `/v1` API, plus global boards an
 - **Open sign-up.** A free name is enough; no invite code. The player gets a private account key (shown once, only its
   SHA-256 is stored) that the launcher keeps. Sign-ups are limited per address and overall.
 - **Global boards** per mode with the top rows, the player's own place and the rows around it.
-- **Friends, only with consent.** Every player has a friend code. Entering someone's code sends a request; it counts
-  only after the other player accepts. The game's Friends board then shows exactly the accepted friends and you.
-  Declined requests are silent for the sender and block repeats; a new code can be created at any time.
+- **Friends, only with consent.** A player is asked by name; the request counts only after the other player accepts. The game's Friends
+  board then shows exactly the accepted friends and you. Declined requests are silent for the sender and block repeats.
 - **Moderation:** a `hidden` flag (shadow ban: the player still sees themselves, nobody else does), deleting a score,
   renaming, replacing an account key, removing a player.
 - **Delete my account** (`POST /v1/me/delete`): removes the player, scores, friendships and requests.
@@ -28,13 +27,12 @@ All answers are JSON; errors are `{"detail": "..."}`. Everything but sign-up and
 | --- | --- |
 | `POST /v1/register` `{name}` | New account: `{xuid, name, token}` |
 | `GET /v1/name-available?name=` | For the launcher's check while typing |
-| `GET /v1/me`, `PUT /v1/me` `{name}` | Own name, xuid and friend code; rename |
-| `POST /v1/me/friend-code` | New friend code (the old one stops working) |
+| `GET /v1/me`, `PUT /v1/me` `{name}` | Own name and xuid; rename |
 | `POST /v1/me/delete` `{confirm:"DELETE"}` | Delete the account |
 | `POST /v1/scores` `{scores:[{view,score}]}` | Upload bests (the server keeps the better value) |
 | `GET /v1/boards?limit=` | Per mode: `total`, `rows`, `mine`, `around`, `friends`; plus the friend list. ETag / 304 |
-| `GET /v1/friends` | Friend code, friends, open incoming and outgoing requests |
-| `POST /v1/friends/request` `{code}` | Ask the owner of a code. Answers `sent` or `friends` |
+| `GET /v1/friends` | Friends, open incoming and outgoing requests |
+| `POST /v1/friends/request` `{to}` | Ask the player with that name. Answers `sent` or `friends` |
 | `POST /v1/friends/accept`, `decline`, `cancel`, `remove` `{xuid}` | Answer, take back or end |
 | `GET /`, `GET /healthz` | Read-only web page (`PUBLIC_BOARD=0` turns it off), health check |
 
@@ -114,7 +112,7 @@ curl -H "$H" -d '{"player":"Name"}' $U/admin/remove
 
 ## What is stored
 
-Per player: a random public id, the name, a hash of the account key, a friend code, and the best score per mode with its
+Per player: a random public id, the name, a hash of the account key, and the best score per mode with its
 time. Friendships and open friend requests. No e-mail address, no password. Addresses are never stored: sign-up limits
 use a truncated hash of the address that is deleted within a day. Players can delete everything with
 `POST /v1/me/delete` (the game's launcher can call it once the client supports it).

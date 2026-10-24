@@ -1,15 +1,16 @@
 name = "gw2-leaderboard"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
+workers_dev = true
+preview_urls = false
+
+# Your own domain (Workers > Custom Domains). The hostname must not have another DNS record: delete the old one first.
+routes = [{ pattern = "gw2.rauwman.org", custom_domain = true }]
 
 [[d1_databases]]
 binding = "DB"
 database_name = "gw2-leaderboard"
-# Printed by `npx wrangler d1 create gw2-leaderboard` (see README.md). It is not a secret.
-database_id = "REPLACE_WITH_DATABASE_ID"
-
-# Your own domain (Workers > Custom Domains). The hostname must not have another DNS record: delete the old one first.
-# routes = [{ pattern = "gw2.example.org", custom_domain = true }]
+database_id = "b9432df0-8ecb-4efc-99be-6271d0ec637a"
 
 # Daily housekeeping: old rate-limit rows and stale friend requests.
 [triggers]
