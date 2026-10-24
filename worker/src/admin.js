@@ -39,6 +39,17 @@ export async function handle(request, env, url) {
     return json({ players: results });
   }
 
+  // Scores that stand out (see FLAG_VS_TOP in config.js), newest first. Nothing was refused; hide the player or delete
+  // the score if it is not real, then clear the flags.
+  if (route === "GET /admin/flags") {
+    const { results } = await env.DB.prepare(
+      "SELECT f.id, p.xuid, p.name, p.hidden, f.view, f.previous, f.score, f.top_other, f.created_at, " +
+        "(SELECT s.score FROM scores s WHERE s.player_id = f.player_id AND s.view = f.view) AS current_score " +
+        "FROM score_flags f JOIN players p ON p.id = f.player_id ORDER BY f.id DESC LIMIT 100",
+    ).all();
+    return json({ flags: results });
+  }
+
   if (request.method !== "POST") throw new HttpError(404, "Not found");
   const body = await readJson(request);
   const player = await find(env, body.player);
@@ -51,6 +62,10 @@ export async function handle(request, env, url) {
         bumpRevision(env),
       ]);
       return json({ player: player.name, hidden: Boolean(hidden) });
+    }
+    case "/admin/clear-flags": {
+      const [done] = await env.DB.batch([env.DB.prepare("DELETE FROM score_flags WHERE player_id = ?").bind(player.id)]);
+      return json({ player: player.name, cleared: done.meta.changes });
     }
     case "/admin/delete-score": {
       if (!MODE_IDS.includes(body.view)) throw new HttpError(422, "Unknown mode");
@@ -81,6 +96,7 @@ export async function handle(request, env, url) {
     case "/admin/remove": {
       await env.DB.batch([
         env.DB.prepare("DELETE FROM scores WHERE player_id = ?").bind(player.id),
+        env.DB.prepare("DELETE FROM score_flags WHERE player_id = ?").bind(player.id),
         env.DB.prepare("DELETE FROM friendships WHERE a_id = ?1 OR b_id = ?1").bind(player.id),
         env.DB.prepare("DELETE FROM friend_requests WHERE from_id = ?1 OR to_id = ?1").bind(player.id),
         env.DB.prepare("DELETE FROM players WHERE id = ?").bind(player.id),

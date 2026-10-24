@@ -22,6 +22,18 @@ CREATE TABLE IF NOT EXISTS scores (
 );
 CREATE INDEX IF NOT EXISTS scores_by_view ON scores (view, score DESC, updated_at ASC);
 
+-- Scores that stand out when they arrive (see FLAG_VS_TOP in src/config.js). Only a note for the operator: the score
+-- is accepted. Read with GET /admin/flags; old rows are deleted by the daily housekeeping.
+CREATE TABLE IF NOT EXISTS score_flags (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id  INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    view       INTEGER NOT NULL,
+    previous   INTEGER NOT NULL,             -- the player's best in this mode before, 0 for none
+    score      INTEGER NOT NULL,
+    top_other  INTEGER NOT NULL,             -- the best of the other visible players at that moment
+    created_at INTEGER NOT NULL
+);
+
 -- A friendship exists only after both sides agreed: a request, accepted by the other player.
 CREATE TABLE IF NOT EXISTS friend_requests (
     from_id    INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,

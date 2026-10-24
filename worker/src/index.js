@@ -19,7 +19,7 @@ import * as accounts from "./accounts.js";
 import * as admin from "./admin.js";
 import * as friends from "./friends.js";
 import * as scores from "./scores.js";
-import { DECLINED_TTL_SECONDS, REQUEST_TTL_SECONDS } from "./config.js";
+import { DECLINED_TTL_SECONDS, FLAG_TTL_SECONDS, REQUEST_TTL_SECONDS } from "./config.js";
 import { HttpError, errorResponse, json, now } from "./common.js";
 import { page } from "./page.js";
 
@@ -61,6 +61,7 @@ export default {
     const time = now();
     await env.DB.batch([
       env.DB.prepare("DELETE FROM rate_limits WHERE expires_at < ?").bind(time),
+      env.DB.prepare("DELETE FROM score_flags WHERE created_at < ?").bind(time - FLAG_TTL_SECONDS),
       env.DB.prepare("DELETE FROM friend_requests WHERE state = 'pending' AND created_at < ?").bind(time - REQUEST_TTL_SECONDS),
       env.DB.prepare("DELETE FROM friend_requests WHERE state = 'declined' AND created_at < ?").bind(time - DECLINED_TTL_SECONDS),
     ]);

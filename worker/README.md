@@ -10,7 +10,7 @@ server in the parent folder and speaks the same `/v1` API, plus global boards an
 ## What it does
 
 - **Open sign-up.** A free name is enough; no invite code. The player gets a private account key (shown once, only its
-  SHA-256 is stored) that the launcher keeps. Sign-ups are limited per address and overall.
+  SHA-256 is stored) that the launcher keeps. Sign-ups are limited per address (per hour and per day) and overall.
 - **Global boards** per mode with the top rows, the player's own place and the rows around it.
 - **Friends, only with consent.** A player is asked by name; the request counts only after the other player accepts. The game's Friends
   board then shows exactly the accepted friends and you. Declined requests are silent for the sender and block repeats.
@@ -108,7 +108,16 @@ curl -H "$H" -d '{"player":"Name","view":3}' $U/admin/delete-score
 curl -H "$H" -d '{"player":"Name","name":"NewName"}' $U/admin/rename
 curl -H "$H" -d '{"player":"Name"}' $U/admin/rotate-token          # for a player who lost their key
 curl -H "$H" -d '{"player":"Name"}' $U/admin/remove
+curl -H "$H" "$U/admin/flags"                                       # scores that stand out, newest first
+curl -H "$H" -d '{"player":"Name"}' $U/admin/clear-flags           # after you looked at them
 ```
+
+Scores cannot be verified, and some modes have no upper limit, so there is no fixed maximum. A new best is accepted
+but flagged when it beats every other visible score in its mode and is at least twice the best of the others, or three
+times the player's own previous best (`FLAG_VS_TOP` and `FLAG_VS_OWN` in `src/config.js`). Look at `/admin/flags`
+now and then; if a score is not real, `hide` the player or `delete-score`. Sign-ups are also limited to 10 per address
+per day. Flags are deleted after 90 days. A database made before this version needs `schema.sql` applied once more
+(it only adds the `score_flags` table).
 
 ## What is stored
 

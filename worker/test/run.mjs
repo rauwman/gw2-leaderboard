@@ -211,6 +211,8 @@ describe("worker", async () => {
 
     test("uploads come at most once per interval", async () => {
       const a = await signUp("Int");
+      // The server counts whole seconds: start early in a second so both uploads fall into the same one.
+      while (Date.now() % 1000 > 250) await sleep(20);
       assert.equal((await upload(a, [{ view: 1, score: 5 }])).status, 200);
       const r = await upload(a, [{ view: 1, score: 6 }]);
       assert.equal(r.status, 429);
@@ -405,6 +407,62 @@ describe("worker", async () => {
       assert.ok(!(await call("GET", "/")).data.includes(a.name));
       assert.equal((await admin("POST", "/admin/hide", { player: a.xuid, hidden: false })).data.hidden, false);
       assert.equal((await boards(b)).data.views["0"].rows[0].name, a.name);
+    });
+
+    test("a score far above the board is flagged, not refused, and the flags can be read and cleared", async () => {
+      const a = await signUp("Fl");
+      const b = await signUp("Fl");
+      await upload(a, [{ view: 3, score: 1_000 }]);
+      const top = (await boards(b)).data.views["3"].rows[0].score;
+      const fresh = await upload(b, [{ view: 3, score: top * 2 + 1 }]);
+      assert.equal(fresh.status, 200);
+      assert.equal(fresh.data.results[0].improved, true, "the score is accepted");
+      const flagged = (await admin("GET", "/admin/flags")).data.flags.filter((f) => f.name === b.name);
+      assert.equal(flagged.length, 1);
+      assert.equal(flagged[0].view, 3);
+      assert.equal(flagged[0].score, top * 2 + 1);
+      assert.equal(flagged[0].top_other, top);
+      assert.equal(flagged[0].current_score, top * 2 + 1);
+      assert.equal((await admin("POST", "/admin/clear-flags", { player: b.name })).data.cleared, 1);
+      assert.equal((await admin("GET", "/admin/flags")).data.flags.filter((f) => f.name === b.name).length, 0);
+    });
+
+    test("ordinary scores are not flagged: below the board, a modest improvement, the first score of a mode", async () => {
+      const a = await signUp("Fn");
+      const b = await signUp("Fn");
+      await upload(a, [{ view: 5, score: 50_000 }]);
+      const top = (await boards(b)).data.views["5"].rows[0].score;
+      await upload(b, [{ view: 5, score: Math.floor(top / 2) }]);
+      await sleep(1100);
+      await upload(b, [{ view: 5, score: Math.floor(top * 1.4) }]); // beats the board, but not by a factor of 2
+      await sleep(1100);
+      await upload(b, [{ view: 5, score: Math.floor(top * 1.5) }]); // a factor of 1.07 over their own best
+      const flags = (await admin("GET", "/admin/flags")).data.flags;
+      assert.equal(flags.filter((f) => f.name === b.name).length, 0);
+    });
+
+    test("a jump of three times the player's own best that also tops the board is flagged", async () => {
+      const a = await signUp("Fj");
+      const b = await signUp("Fj");
+      await upload(a, [{ view: 2, score: 1_000 }]);
+      const top = (await boards(b)).data.views["2"].rows[0].score;
+      await upload(b, [{ view: 2, score: Math.floor(top / 4) }]);
+      await sleep(1100);
+      await upload(b, [{ view: 2, score: Math.floor(top * 1.2) }]); // 4.8 times their best, 1.2 times the board
+      const flagged = (await admin("GET", "/admin/flags")).data.flags.filter((f) => f.name === b.name);
+      assert.equal(flagged.length, 1);
+      assert.equal(flagged[0].previous, Math.floor(top / 4));
+    });
+
+    test("removing a player also removes their flags", async () => {
+      const a = await signUp("Fr");
+      const b = await signUp("Fr");
+      await upload(a, [{ view: 4, score: 1_000 }]);
+      const top = (await boards(b)).data.views["4"].rows[0].score;
+      await upload(b, [{ view: 4, score: top * 3 }]);
+      assert.equal((await admin("GET", "/admin/flags")).data.flags.filter((f) => f.name === b.name).length, 1);
+      assert.equal((await call("POST", "/v1/me/delete", { token: b.token, body: { confirm: "DELETE" } })).status, 200);
+      assert.equal((await admin("GET", "/admin/flags")).data.flags.filter((f) => f.name === b.name).length, 0);
     });
 
     test("a hidden player's requests never arrive", async () => {

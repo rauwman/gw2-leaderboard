@@ -1,7 +1,7 @@
 // Uploading scores and reading the boards.
 
 import {
-  AROUND_SPAN, DEFAULT_MAX_SCORE, MAX_BOARD_ROWS, MAX_SCORE, MODE_IDS, SUBMIT_INTERVAL_SECONDS,
+  AROUND_SPAN, DEFAULT_MAX_SCORE, FLAG_VS_OWN, FLAG_VS_TOP, MAX_BOARD_ROWS, MAX_SCORE, MODE_IDS, SUBMIT_INTERVAL_SECONDS,
 } from "./config.js";
 import { HttpError, authenticate, bumpRevision, json, now, readJson, revision } from "./common.js";
 
@@ -41,6 +41,19 @@ export async function postScores(request, env) {
   }
 
   const views = [...best.keys()].sort((a, b) => a - b);
+
+  // What stood before, to flag a score that stands out afterwards.
+  const marks = views.map(() => "?").join(",");
+  const [own, others] = await env.DB.batch([
+    env.DB.prepare(`SELECT view, score FROM scores WHERE player_id = ? AND view IN (${marks})`).bind(player.id, ...views),
+    env.DB.prepare(
+      "SELECT s.view AS view, MAX(s.score) AS top FROM scores s JOIN players p ON p.id = s.player_id " +
+        `WHERE p.hidden = 0 AND s.player_id != ? AND s.view IN (${marks}) GROUP BY s.view`,
+    ).bind(player.id, ...views),
+  ]);
+  const before = new Map(own.results.map((r) => [r.view, r.score]));
+  const topOthers = new Map(others.results.map((r) => [r.view, r.top]));
+
   const results = await env.DB.batch([
     env.DB.prepare("UPDATE players SET last_submit = ? WHERE id = ?").bind(time, player.id),
     ...views.map((view) =>
@@ -53,6 +66,22 @@ export async function postScores(request, env) {
   ]);
   const improved = new Map(views.map((view, i) => [view, results[i + 1].meta.changes > 0]));
   if ([...improved.values()].some(Boolean)) await bumpRevision(env).run();
+
+  const flags = views.filter((view) => {
+    const score = best.get(view);
+    const top = topOthers.get(view) ?? 0;
+    const previous = before.get(view) ?? 0;
+    return improved.get(view) && top > 0 && score > top && (score >= FLAG_VS_TOP * top || (previous > 0 && score >= FLAG_VS_OWN * previous));
+  });
+  if (flags.length) {
+    await env.DB.batch(
+      flags.map((view) =>
+        env.DB.prepare(
+          "INSERT INTO score_flags (player_id, view, previous, score, top_other, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        ).bind(player.id, view, before.get(view) ?? 0, best.get(view), topOthers.get(view), time),
+      ),
+    );
+  }
 
   const { results: mine } = await env.DB.prepare(MINE_SQL).bind(player.id).all();
   const byView = new Map(mine.map((row) => [row.view, row]));

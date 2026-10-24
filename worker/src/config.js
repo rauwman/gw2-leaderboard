@@ -14,6 +14,13 @@ export const NAME_RULE = "1-15 characters: letters, digits, space, _ . -; must s
 export const DEFAULT_MAX_SCORE = 100_000_000_000;
 export const MAX_SCORE = {};
 
+// A new best is flagged for the operator (never refused) when it beats every other visible score in its mode and is
+// at least FLAG_VS_TOP times the best of the others, or FLAG_VS_OWN times the player's own previous best. Scores are
+// not verifiable, and some modes have no limit, so a person decides (GET /admin/flags, then /admin/hide).
+export const FLAG_VS_TOP = 2;
+export const FLAG_VS_OWN = 3;
+export const FLAG_TTL_SECONDS = 90 * 86400;
+
 // One upload per player this often. A finished game never comes close to it.
 export const SUBMIT_INTERVAL_SECONDS = 10;
 
@@ -30,6 +37,7 @@ export const DECLINED_TTL_SECONDS = 180 * 86400;
 // [attempts, window in seconds]. Every attempt counts, successful or not.
 export const LIMITS = {
   register_ip: [5, 3600],
+  register_ip_day: [10, 86400], // a few friends behind one router fit; a name-changing loop does not
   register_all: [300, 3600], // a circuit breaker for sign-ups spread over many addresses
   friend_request: [20, 3600], // per player: names are public, so this is what limits request spam
   rename: [10, 3600],

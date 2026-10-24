@@ -22,7 +22,9 @@ export async function register(request, env) {
   if (env.REGISTRATION === "closed") throw new HttpError(403, "Registration is closed");
   const body = await readJson(request);
   const name = checkName(body.name);
-  if (!(await withinLimit(env, "register_ip", await clientKey(request)))) throw tooMany("register_ip");
+  const key = await clientKey(request);
+  if (!(await withinLimit(env, "register_ip", key))) throw tooMany("register_ip");
+  if (!(await withinLimit(env, "register_ip_day", key))) throw tooMany("register_ip_day");
   if (!(await withinLimit(env, "register_all", "all"))) throw tooMany("register_all");
 
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -73,6 +75,7 @@ export async function deleteMe(request, env) {
   if (body.confirm !== "DELETE") throw new HttpError(400, 'Send {"confirm": "DELETE"} to delete the account');
   await env.DB.batch([
     env.DB.prepare("DELETE FROM scores WHERE player_id = ?").bind(player.id),
+    env.DB.prepare("DELETE FROM score_flags WHERE player_id = ?").bind(player.id),
     env.DB.prepare("DELETE FROM friendships WHERE a_id = ?1 OR b_id = ?1").bind(player.id),
     env.DB.prepare("DELETE FROM friend_requests WHERE from_id = ?1 OR to_id = ?1").bind(player.id),
     env.DB.prepare("DELETE FROM players WHERE id = ?").bind(player.id),
